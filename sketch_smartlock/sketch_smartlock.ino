@@ -48,6 +48,11 @@ static bool g_need_report = true;
 
 static gpsSentenceInfoStruct g_gps_info;
 static unsigned long g_last_get_gps_ms = 0;
+static unsigned long g_buzzer_on_ms = 0;
+static uint32_t g_buzzer_duration = 0;
+static bool g_buzzer_on = false;
+
+static unsigned long g_check_net_ms = 0;
 
 static inline void start_motor() {
   digitalWrite(PIN_MOTOR, LOW);
@@ -55,6 +60,16 @@ static inline void start_motor() {
 
 static inline void stop_motor() {
   digitalWrite(PIN_MOTOR, HIGH);
+}
+
+static inline void start_buzzer() {
+  g_buzzer_on = true;
+  digitalWrite(PIN_BUZZER, HIGH);
+}
+
+static inline void stop_buzzer() {
+  digitalWrite(PIN_BUZZER, LOW);
+  g_buzzer_on = false;
 }
 
 static inline bool lock_status_on() {
@@ -71,6 +86,18 @@ static inline bool lock_step_on() {
   } else {
     return false;
   }
+}
+
+static void buzzer(uint32_t duration) {
+  g_buzzer_on_ms = millis();
+  g_buzzer_duration = duration;
+  start_buzzer();
+}
+
+static void sync_buzzer(uint32_t duration) {
+  start_buzzer();
+  delay(duration);
+  stop_buzzer();
 }
 
 static bool get_ip_port(const char *url, char *ip, uint16_t *port) {
@@ -209,7 +236,8 @@ static void init_gprs() {
   }
   Serial.println("gprs ok");
   LGPS.powerOn();
-  delay(2000);
+  delay(100);
+  sync_buzzer(400);
   g_status = STATUS_INIT_YUNBA;
 }
 
@@ -235,12 +263,13 @@ static void init_yunba() {
   }
 
   Serial.println("yunba ok");
+  sync_buzzer(200);
   set_alias(g_alias);
 
   g_status = STATUS_IDLE;
 }
 
-void update_gps() {
+static void update_gps() {
   if (millis() - g_last_get_gps_ms > 10000) {
     LGPS.getData(&g_gps_info);
     String gps = String((char *)g_gps_info.GPGGA);
@@ -251,7 +280,7 @@ void update_gps() {
   }
 }
 
-void handle_report() {
+static void handle_report() {
   if (!g_need_report) {
     return;
   }
@@ -271,7 +300,7 @@ void handle_report() {
   g_need_report = false;
 }
 
-void unlock() {
+static void unlock() {
   if (g_lock_status != LOCK_LOCKED) {
     Serial.println("not locked now");
     return;
@@ -283,7 +312,7 @@ void unlock() {
   Serial.println("unlocking");
 }
 
-void handle_msg(String &msg) {
+static void handle_msg(String &msg) {
   StaticJsonBuffer<JSON_BUF_SIZE> json_buf;
   JsonObject& root = json_buf.parseObject(msg);
   if (!root.success()) {
@@ -294,10 +323,14 @@ void handle_msg(String &msg) {
   String cmd = root["cmd"];
   if (cmd == "unlock") {
     unlock();
+  } else if (cmd == "report") {
+    g_need_report = true;
+  } else if (cmd == "buzzer") {
+    buzzer(1000);
   }
 }
 
-void handle_lock() {
+static void handle_lock() {
   switch (g_lock_status) {
     case LOCK_UNLOCKING:
       if (!lock_step_on()) {
@@ -309,6 +342,7 @@ void handle_lock() {
           stop_motor();
           g_need_report = true;
           g_lock_status = LOCK_UNLOCKED;
+          buzzer(200);
           Serial.println("unlocked");
         }
       }
@@ -321,8 +355,9 @@ void handle_lock() {
       } else {
         if (g_lock_unlock_step == 1) {
           stop_motor();
-          g_lock_status = LOCK_LOCKED;
           g_need_report = true;
+          g_lock_status = LOCK_LOCKED;
+          buzzer(400);
           Serial.println("locked");
         }
       }
@@ -337,6 +372,18 @@ void handle_lock() {
       break;
     default:
       break;
+  }
+}
+
+static void check_network() {
+  if (millis() - g_check_net_ms > 20000) {
+    if (!g_mqtt_client.connected()) {
+      Serial.println("mqtt connection failed, reset gprs");
+      g_status = STATUS_INIT_GPRS;
+    } else {
+      Serial.println("mqtt connection is ok");
+    }
+    g_check_net_ms = millis();
   }
 }
 
@@ -357,7 +404,7 @@ void setup() {
   Serial.println("setup...");
 
   pinMode(PIN_MOTOR, OUTPUT);
-  stop_motor();
+  digitalWrite(PIN_MOTOR, HIGH);
   pinMode(PIN_LOCK_STATUS, INPUT);
   pinMode(PIN_LOCK_STEP, INPUT);
   pinMode(PIN_BUZZER, OUTPUT);
@@ -386,10 +433,15 @@ void loop() {
       update_gps();
       handle_report();
       handle_lock();
+      check_network();
       break;
     default:
       Serial.println("unknown status: " + g_status);
       break;
+  }
+
+  if (g_buzzer_on && (millis() - g_buzzer_on_ms > g_buzzer_duration)) {
+    stop_buzzer();
   }
   delay(20);
 }
