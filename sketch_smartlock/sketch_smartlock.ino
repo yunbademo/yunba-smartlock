@@ -1,15 +1,23 @@
-#include "SPI.h"
 #include <ArduinoJson.h>
 #include <LGPRS.h>
 #include <LGPRSClient.h>
 #include <LGPS.h>
 #include <MQTTClient.h>
 
+#define JSON_BUF_SIZE 192
+
+#define PIN_MOTOR 0
+#define PIN_LOCK_STATUS 5
+#define PIN_LOCK_STEP 6
+#define PIN_BUZZER 7
+
 typedef enum {
   STATUS_INVALID,
   STATUS_INIT_GPRS,
   STATUS_INIT_YUNBA,
-  STATUS_IDLE
+  STATUS_IDLE,
+  STATUS_UNLOCK_1,
+  STATUS_UNLOCK_2,
 } STATUS;
 
 STATUS g_status = STATUS_INVALID;
@@ -28,7 +36,27 @@ static char g_password[32];
 
 static LGPRSClient g_net_client;
 static MQTTClient g_mqtt_client;
-static StaticJsonBuffer<192> g_json_buf;
+
+static bool g_need_report = true;
+
+static gpsSentenceInfoStruct g_gps_info;
+static unsigned long g_last_get_gps_ms = 0;
+
+static inline void start_motor() {
+  digitalWrite(PIN_MOTOR, LOW);
+}
+
+static inline void stop_motor() {
+  digitalWrite(PIN_MOTOR, HIGH);
+}
+
+static inline bool is_locked() {
+  if (digitalRead(PIN_LOCK_STATUS) == LOW) {
+    return true;
+  } else {
+    return false;
+  }
+}
 
 static bool get_ip_port(const char *url, char *ip, uint16_t *port) {
   char *p = strstr(url, "tcp://");
@@ -40,10 +68,7 @@ static bool get_ip_port(const char *url, char *ip, uint16_t *port) {
       if (len > 0) {
         memcpy(ip, p, len);
         *port = atoi(q + 1);
-        Serial.print("ip: ");
-        Serial.println(ip);
-        Serial.print("port: ");
-        Serial.println(*port);
+        Serial.println("ip: " + String(ip) + ", port: " + String(*port));
         return true;
       }
     }
@@ -75,7 +100,7 @@ static bool get_host_v2(const char *appkey, char *url) {
   Serial.println("wait data");
   while (!net_client.available()) {
     Serial.println(".");
-    delay(100);
+    delay(200);
   }
 
   memset(buf, 0, 256);
@@ -84,7 +109,8 @@ static bool get_host_v2(const char *appkey, char *url) {
     len = (uint16_t)(((uint8_t)buf[1] << 8) | (uint8_t)buf[2]);
     if (len == strlen((char *)(buf + 3))) {
       Serial.println((char *)(&buf[3]));
-      JsonObject& root = g_json_buf.parseObject((char *)&buf[3]);
+      StaticJsonBuffer<JSON_BUF_SIZE> json_buf;
+      JsonObject& root = json_buf.parseObject((char *)&buf[3]);
       if (!root.success()) {
         Serial.println("parseObject() failed");
         goto exit;
@@ -108,7 +134,7 @@ static bool setup_with_appkey_and_device_id(const char* appkey, const char *devi
     Serial.println("reconnect reg");
     delay(1000);
   }
-  delay(100);
+  delay(200);
 
   String data;
   if (device_id == NULL)
@@ -129,7 +155,7 @@ static bool setup_with_appkey_and_device_id(const char* appkey, const char *devi
   Serial.println("wait data");
   while (!net_client.available()) {
     Serial.println(".");
-    delay(100);
+    delay(200);
   }
 
   memset(buf, 0, 256);
@@ -138,7 +164,8 @@ static bool setup_with_appkey_and_device_id(const char* appkey, const char *devi
     len = (uint16_t)(((uint8_t)buf[1] << 8) | (uint8_t)buf[2]);
     if (len == strlen((char *)(buf + 3))) {
       Serial.println((char *)(&buf[3]));
-      JsonObject& root = g_json_buf.parseObject((char *)&buf[3]);
+      StaticJsonBuffer<JSON_BUF_SIZE> json_buf;
+      JsonObject& root = json_buf.parseObject((char *)&buf[3]);
       if (!root.success()) {
         Serial.println("parseObject() failed");
         net_client.stop();
@@ -183,12 +210,13 @@ static void init_yunba() {
   Serial.println("get_ip_port");
   get_ip_port(url, ip, &port);
   Serial.println("mqtt begin");
-  g_mqtt_client.begin("182.92.180.87", 1883, g_net_client);
+  g_mqtt_client.begin(ip, 1883, g_net_client);
 
   Serial.println("mqtt connect");
   while (!g_mqtt_client.connect(g_client_id, g_username, g_password)) {
     Serial.println(".");
     LGPRS.attachGPRS(g_gprs_apn, g_gprs_username, g_gprs_password);
+    delay(200);
   }
 
   Serial.println("yunba ok");
@@ -197,19 +225,64 @@ static void init_yunba() {
   g_status = STATUS_IDLE;
 }
 
+void update_gps() {
+  if (millis() - g_last_get_gps_ms > 10000) {
+    LGPS.getData(&g_gps_info);
+    Serial.println("gps: " + String((char *)g_gps_info.GPGGA));
+    g_last_get_gps_ms = millis();
+    g_need_report = true;
+  }
+}
+
+void handle_report() {
+  if (!g_need_report) {
+    return;
+  }
+
+  StaticJsonBuffer<JSON_BUF_SIZE> json_buf;
+  JsonObject& root = json_buf.createObject();
+  root["lock"] = is_locked();
+  root["gps"] = (char *)g_gps_info.GPGGA;
+
+  String json;
+  root.printTo(json);
+
+  Serial.println("publish: " + json);
+  g_mqtt_client.publish(g_report_topic, json);
+  g_need_report = false;
+}
+
+void unlock() {
+  if (!is_locked()) {
+    Serial.println("not locked now");
+    return;
+  }
+
+  Serial.println("unlocking");
+}
+
+void handle_msg(String &msg) {
+  StaticJsonBuffer<JSON_BUF_SIZE> json_buf;
+  JsonObject& root = json_buf.parseObject(msg);
+  if (!root.success()) {
+    Serial.println("parse json failed");
+    return;
+  }
+
+  String cmd = root["cmd"];
+  if (cmd == "unlock") {
+    unlock();
+  }
+}
+
 /* messageReceived and extMessageReceived must be defined with no 'static', because MQTTClient use them */
-void messageReceived(String topic, String payload, char * bytes, unsigned int length) {
-  Serial.println("message:");
-  Serial.print(topic);
-  Serial.print(" - ");
-  Serial.print(payload);
+void messageReceived(String topic, String payload, char *bytes, unsigned int length) {
+  Serial.println("msg: " + topic + ", " + payload);
+  handle_msg(payload);
 }
 
 void extMessageReceived(EXTED_CMD cmd, int status, String payload, unsigned int length) {
-  Serial.println("ext message:");
-  Serial.print(cmd);
-  Serial.print(" - ");
-  Serial.print(payload);
+  //  Serial.println("ext msg: " + String(cmd) + ", " + payload);
 }
 
 void setup() {
@@ -218,12 +291,19 @@ void setup() {
   //  delay(10000);
   Serial.println("setup...");
 
+  pinMode(PIN_MOTOR, OUTPUT);
+  stop_motor();
+  pinMode(PIN_LOCK_STATUS, INPUT);
+  pinMode(PIN_LOCK_STEP, INPUT);
+  pinMode(PIN_BUZZER, OUTPUT);
+  digitalWrite(PIN_BUZZER, LOW);
+
   g_status = STATUS_INIT_GPRS;
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
-//  Serial.println("loop...");
+  //  Serial.println("loop...");
   switch (g_status) {
     case STATUS_INIT_GPRS:
       init_gprs();
@@ -232,13 +312,15 @@ void loop() {
       init_yunba();
       break;
     case STATUS_IDLE:
-      //      g_mqtt_client.loop();
+      g_mqtt_client.loop();
+      update_gps();
+      handle_report();
       break;
     default:
-      Serial.print("unknown status:");
-      Serial.println(g_status);
+      Serial.println("unknown status: " + g_status);
       break;
   }
-  delay(100);
+  delay(10);
 }
+
 
