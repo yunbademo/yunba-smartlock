@@ -16,11 +16,18 @@ typedef enum {
   STATUS_INIT_GPRS,
   STATUS_INIT_YUNBA,
   STATUS_IDLE,
-  STATUS_UNLOCK_1,
-  STATUS_UNLOCK_2,
 } STATUS;
 
-STATUS g_status = STATUS_INVALID;
+typedef enum {
+  LOCK_LOCKED,
+  LOCK_LOCKING,
+  LOCK_UNLOCKED,
+  LOCK_UNLOCKING
+} LOCK;
+
+static STATUS g_status = STATUS_INVALID;
+static LOCK g_lock_status = LOCK_LOCKED;
+static int g_lock_unlock_step = 0;
 
 static const char *g_gprs_apn = "3gnet";
 static const char *g_gprs_username = "";
@@ -50,8 +57,16 @@ static inline void stop_motor() {
   digitalWrite(PIN_MOTOR, HIGH);
 }
 
-static inline bool is_locked() {
+static inline bool lock_status_on() {
   if (digitalRead(PIN_LOCK_STATUS) == LOW) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+static inline bool lock_step_on() {
+  if (digitalRead(PIN_LOCK_STEP) == LOW) {
     return true;
   } else {
     return false;
@@ -228,7 +243,9 @@ static void init_yunba() {
 void update_gps() {
   if (millis() - g_last_get_gps_ms > 10000) {
     LGPS.getData(&g_gps_info);
-    Serial.println("gps: " + String((char *)g_gps_info.GPGGA));
+    String gps = String((char *)g_gps_info.GPGGA);
+    gps.trim();
+    Serial.println("gps: " + gps);
     g_last_get_gps_ms = millis();
     g_need_report = true;
   }
@@ -241,8 +258,10 @@ void handle_report() {
 
   StaticJsonBuffer<JSON_BUF_SIZE> json_buf;
   JsonObject& root = json_buf.createObject();
-  root["lock"] = is_locked();
-  root["gps"] = (char *)g_gps_info.GPGGA;
+  root["lock"] = (g_lock_status == LOCK_LOCKED);
+  String gps = String((char *)g_gps_info.GPGGA);
+  gps.trim();
+  root["gps"] = gps;
 
   String json;
   root.printTo(json);
@@ -253,11 +272,14 @@ void handle_report() {
 }
 
 void unlock() {
-  if (!is_locked()) {
+  if (g_lock_status != LOCK_LOCKED) {
     Serial.println("not locked now");
     return;
   }
 
+  g_lock_status = LOCK_UNLOCKING;
+  g_lock_unlock_step = 0;
+  start_motor();
   Serial.println("unlocking");
 }
 
@@ -272,6 +294,49 @@ void handle_msg(String &msg) {
   String cmd = root["cmd"];
   if (cmd == "unlock") {
     unlock();
+  }
+}
+
+void handle_lock() {
+  switch (g_lock_status) {
+    case LOCK_UNLOCKING:
+      if (!lock_step_on()) {
+        if (g_lock_unlock_step == 0) {
+          g_lock_unlock_step = 1;
+        }
+      } else {
+        if (g_lock_unlock_step == 1) {
+          stop_motor();
+          g_need_report = true;
+          g_lock_status = LOCK_UNLOCKED;
+          Serial.println("unlocked");
+        }
+      }
+      break;
+    case LOCK_LOCKING:
+      if (!lock_step_on()) {
+        if (g_lock_unlock_step == 0) {
+          g_lock_unlock_step = 1;
+        }
+      } else {
+        if (g_lock_unlock_step == 1) {
+          stop_motor();
+          g_lock_status = LOCK_LOCKED;
+          g_need_report = true;
+          Serial.println("locked");
+        }
+      }
+      break;
+    case LOCK_UNLOCKED:
+      if (lock_status_on()) {
+        g_lock_status = LOCK_LOCKING;
+        g_lock_unlock_step = 0;
+        start_motor();
+        Serial.println("locking");
+      }
+      break;
+    default:
+      break;
   }
 }
 
@@ -298,6 +363,11 @@ void setup() {
   pinMode(PIN_BUZZER, OUTPUT);
   digitalWrite(PIN_BUZZER, LOW);
 
+  if (lock_status_on()) {
+    g_lock_status = LOCK_UNLOCKED;
+  } else {
+    g_lock_status = LOCK_LOCKED;
+  }
   g_status = STATUS_INIT_GPRS;
 }
 
@@ -315,12 +385,12 @@ void loop() {
       g_mqtt_client.loop();
       update_gps();
       handle_report();
+      handle_lock();
       break;
     default:
       Serial.println("unknown status: " + g_status);
       break;
   }
-  delay(10);
+  delay(20);
 }
-
 
