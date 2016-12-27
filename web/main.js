@@ -116,7 +116,7 @@ function yunba_msg_cb(data) {
         if (window.send_time != null) {
             var recv_time = new Date();
             var sec = (recv_time.getTime() - window.send_time.getTime()) / 1000.0;
-            status = '已打开(用时 ' + sec + ' 秒)';
+            status = '已打开(' + sec + ' 秒)';
             window.send_time = null;
         } else {
             status = '已打开';
