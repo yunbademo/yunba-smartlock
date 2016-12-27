@@ -25,7 +25,7 @@
     }
     
     .my-btn-block {
-    	margin-top: 3px;
+        margin-top: 3px;
         width: 100%;
     }
     
@@ -59,10 +59,19 @@
             transform: rotate(359deg);
         }
     }
+    
+    #div-map {
+        margin-top: 3px;
+        /*border: 1px solid #aaa;*/
+        /*border-radius: 3px;*/
+        height: 320px;
+        width: 100%;
+    }
     </style>
     <script src="//cdn.bootcss.com/socket.io/1.4.5/socket.io.js"></script>
     <script src="https://rawgit.com/yunba/yunba-javascript-sdk/master/yunba-js-sdk.js"></script>
     <script src="//cdn.bootcss.com/jquery/2.2.1/jquery.min.js"></script>
+    <script charset="utf-8" src="http://map.qq.com/api/js?v=2.exp"></script>
 </head>
 
 <body>
@@ -71,24 +80,21 @@
             <div class="col-lg-2 col-md-1 col-xs-0 my-col"></div>
             <div class="col-lg-8 col-md-10 col-xs-0 my-col">
                 <div class="panel panel-success center">
-                    <div class="panel-heading">
-                    </div>
                     <div class="panel-body">
                         <button type="button" class="btn btn-success disabled my-btn-block">
                             <span id="span-loading" class="glyphicon glyphicon-refresh glyphicon-spin" aria-hidden="true"></span>
                             <span id="span-status">正在加载所需文件...</span>
                         </button>
-                        <button id="btn-gps" type="button" class="btn btn-success disabled my-btn-block", style="display: none">
-                            <span id="span-gps">GPS: 无</span>
-                        </button>
-                        <button id="btn-send" type="button" class="btn btn-danger my-btn-block" disabled="true">
-                            <span class="glyphicon glyphicon-send" aria-hidden="true"></span> 开锁
+                        <button id="btn-gps" type="button" class="btn btn-success disabled my-btn-block" , style="display: none">
+                            <span id="span-gps">GPS</span>
                         </button>
                         <button id="btn-buzzer" type="button" class="btn btn-danger my-btn-block" disabled="true">
                             <span class="glyphicon glyphicon-earphone" aria-hidden="true"></span> 鸣笛
                         </button>
-                    </div>
-                    <div class="panel-footer">
+                        <button id="btn-send" type="button" class="btn btn-danger my-btn-block" disabled="true">
+                            <span class="glyphicon glyphicon-send" aria-hidden="true"></span> 开锁
+                        </button>
+                        <div id="div-map"></div>
                         <a href="http://yunba.io/">云巴</a> -
                         <a href="https://github.com/yunbademo">
 							GitHub
