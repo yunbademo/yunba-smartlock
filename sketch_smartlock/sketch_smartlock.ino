@@ -28,6 +28,7 @@ typedef enum {
 static STATUS g_status = STATUS_INVALID;
 static LOCK g_lock_status = LOCK_LOCKED;
 static int g_lock_unlock_step = 0;
+static unsigned long g_unlocked_ms = 0;
 
 static const char *g_gprs_apn = "3gnet";
 static const char *g_gprs_username = "";
@@ -343,6 +344,7 @@ static void handle_lock() {
           g_need_report = true;
           g_lock_status = LOCK_UNLOCKED;
           buzzer(200);
+          g_unlocked_ms = millis();
           Serial.println("unlocked");
         }
       }
@@ -363,6 +365,9 @@ static void handle_lock() {
       }
       break;
     case LOCK_UNLOCKED:
+      if (millis() - g_unlocked_ms < 100) {
+        break;
+      }
       if (lock_status_on()) {
         g_lock_status = LOCK_LOCKING;
         g_lock_unlock_step = 0;
@@ -379,6 +384,8 @@ static void check_network() {
   if (millis() - g_check_net_ms > 20000) {
     if (!g_mqtt_client.connected()) {
       Serial.println("mqtt connection failed, reset gprs");
+      LGPS.powerOff();
+      sync_buzzer(2000);
       g_status = STATUS_INIT_GPRS;
     } else {
       Serial.println("mqtt connection is ok");
