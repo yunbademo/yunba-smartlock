@@ -50,7 +50,7 @@ static MQTTClient g_mqtt_client;
 static bool g_need_report = true;
 
 static gpsSentenceInfoStruct g_gps_info;
-static unsigned long g_last_get_gps_ms = 0;
+static unsigned long g_last_report_ms = 0;
 static unsigned long g_buzzer_on_ms = 0;
 static uint32_t g_buzzer_duration = 0;
 static bool g_buzzer_on = false;
@@ -273,16 +273,12 @@ static void init_yunba() {
   g_status = STATUS_IDLE;
 }
 
-//static void update_gps() {
-//  if (millis() - g_last_get_gps_ms > 10000) {
-//    LGPS.getData(&g_gps_info);
-//    String gps = String((char *)g_gps_info.GPGGA);
-//    gps.trim();
-//    Serial.println("gps: " + gps);
-//    g_last_get_gps_ms = millis();
-//    g_need_report = true;
-//  }
-//}
+static void check_need_report() {
+  if (millis() - g_last_report_ms > 240000) {
+    g_last_report_ms = millis();
+    g_need_report = true;
+  }
+}
 
 static void handle_report() {
   if (!g_need_report) {
@@ -446,7 +442,7 @@ void loop() {
       break;
     case STATUS_IDLE:
       g_mqtt_client.loop();
-      //      update_gps();
+      check_need_report();
       handle_report();
       handle_lock();
       check_network();
