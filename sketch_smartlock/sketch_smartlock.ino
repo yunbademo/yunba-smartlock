@@ -1,10 +1,12 @@
 #include <ArduinoJson.h>
 #include <LGPRS.h>
 #include <LGPRSClient.h>
+#include <LBattery.h>
 #include <LGPS.h>
+#define MQTT_BUFFER_SIZE 256
 #include <MQTTClient.h>
 
-#define JSON_BUF_SIZE 192
+#define JSON_BUF_SIZE 256
 
 #define PIN_MOTOR 0
 #define PIN_LOCK_STATUS 5
@@ -123,9 +125,10 @@ static bool get_host_v2(const char *appkey, char *url) {
   uint8_t buf[256];
   bool rc = false;
   LGPRSClient net_client;
-  while (0 == net_client.connect("tick-t.yunba.io", 9977)) {
-    Serial.println("reconnect tick");
-    delay(500);
+  Serial.println("connect tick");
+  while (!net_client.connect("tick-t.yunba.io", 9977)) {
+    Serial.println(".");
+    delay(1000);
   }
 
   String data = "{\"a\":\"" + String(appkey) + "\",\"n\":\"1\",\"v\":\"v1.0\",\"o\":\"1\"}";
@@ -173,11 +176,11 @@ static bool setup_with_appkey_and_device_id(const char* appkey, const char *devi
   bool rc = false;
   LGPRSClient net_client;
 
-  while (0 == net_client.connect("reg-t.yunba.io", 9944)) {
-    Serial.println("reconnect reg");
+  Serial.println("connect reg");
+  while (!net_client.connect("reg-t.yunba.io", 9944)) {
+    Serial.println(".");
     delay(1000);
   }
-  delay(200);
 
   String data;
   if (device_id == NULL)
@@ -292,6 +295,8 @@ static void handle_report() {
   String gps = String((char *)g_gps_info.GPGGA);
   gps.trim();
   root["gps"] = gps;
+  root["battery"] = LBattery.level();
+  root["charge"] = (LBattery.isCharging() == true);
 
   String json;
   root.printTo(json);
@@ -365,7 +370,7 @@ static void handle_lock() {
       }
       break;
     case LOCK_UNLOCKED:
-      if (millis() - g_unlocked_ms < 100) {
+      if (millis() - g_unlocked_ms < 400) {
         break;
       }
       if (lock_status_on()) {
@@ -383,10 +388,10 @@ static void handle_lock() {
 static void check_network() {
   if (millis() - g_check_net_ms > 20000) {
     if (!g_mqtt_client.connected()) {
-      Serial.println("mqtt connection failed, reset gprs");
+      Serial.println("mqtt connection failed, try reconnect");
       LGPS.powerOff();
       sync_buzzer(2000);
-      g_status = STATUS_INIT_GPRS;
+      g_status = STATUS_INIT_YUNBA;
     } else {
       Serial.println("mqtt connection is ok");
     }
@@ -418,9 +423,9 @@ void setup() {
   digitalWrite(PIN_BUZZER, LOW);
 
   if (lock_status_on()) {
-    g_lock_status = LOCK_UNLOCKED;
-  } else {
     g_lock_status = LOCK_LOCKED;
+  } else {
+    g_lock_status = LOCK_UNLOCKED;
   }
   g_status = STATUS_INIT_GPRS;
 }
