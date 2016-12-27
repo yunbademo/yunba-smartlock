@@ -273,16 +273,16 @@ static void init_yunba() {
   g_status = STATUS_IDLE;
 }
 
-static void update_gps() {
-  if (millis() - g_last_get_gps_ms > 10000) {
-    LGPS.getData(&g_gps_info);
-    String gps = String((char *)g_gps_info.GPGGA);
-    gps.trim();
-    Serial.println("gps: " + gps);
-    g_last_get_gps_ms = millis();
-    g_need_report = true;
-  }
-}
+//static void update_gps() {
+//  if (millis() - g_last_get_gps_ms > 10000) {
+//    LGPS.getData(&g_gps_info);
+//    String gps = String((char *)g_gps_info.GPGGA);
+//    gps.trim();
+//    Serial.println("gps: " + gps);
+//    g_last_get_gps_ms = millis();
+//    g_need_report = true;
+//  }
+//}
 
 static void handle_report() {
   if (!g_need_report) {
@@ -291,10 +291,14 @@ static void handle_report() {
 
   StaticJsonBuffer<JSON_BUF_SIZE> json_buf;
   JsonObject& root = json_buf.createObject();
+
   root["lock"] = (g_lock_status == LOCK_LOCKED);
+
+  LGPS.getData(&g_gps_info);
   String gps = String((char *)g_gps_info.GPGGA);
   gps.trim();
   root["gps"] = gps;
+
   root["battery"] = LBattery.level();
   root["charge"] = (LBattery.isCharging() == true);
 
@@ -442,7 +446,7 @@ void loop() {
       break;
     case STATUS_IDLE:
       g_mqtt_client.loop();
-      update_gps();
+      //      update_gps();
       handle_report();
       handle_lock();
       check_network();
