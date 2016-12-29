@@ -2,21 +2,33 @@ var APPKEY = '56a0a88c4407a3cd028ac2fe';
 var TOPIC_REPORT = 'lock_report';
 var ALIAS = 'lock_102030002';
 
-function resetMap() {
+function reset_map() {
     var mapHeight = $(window).height() - $('#div-map').offset().top - 48;
     console.log('map height: ' + mapHeight);
     $('#div-map').height(mapHeight);
+
+
+    // 22.175985300000004,
+    //  "lng": 113.5527563
+
+    var pos = { lat: 22.175985300000004, lng: 113.5527563 };
+    map = new google.maps.Map(document.getElementById('div-map'), {
+        zoom: 13,
+        center: pos
+    });
+    marker = new google.maps.Marker({
+        position: pos,
+        map: map
+    });
 }
 
 $(window).resize(function() {
-    resetMap();
+    reset_map();
 });
 
 $(document).ready(function() {
     window.send_time = null;
     window.first_msg = true;
-
-    resetMap();
 
     $('#span-status').text('正在连接云巴服务器...');
 
@@ -62,17 +74,6 @@ $(document).ready(function() {
             console.log('yunba init failed');
         }
     });
-
-
-    var center = new qq.maps.LatLng(22.5382099, 113.9577271);
-    map = new qq.maps.Map(document.getElementById('div-map'), {
-        center: center,
-        zoom: 13
-    });
-    marker = new qq.maps.Marker({
-        position: center,
-        map: map
-    });
 });
 
 $('#btn-send').click(function() {
@@ -112,7 +113,7 @@ function yunba_msg_cb(data) {
     if (msg.lock == true) {
         status = '已锁上';
         $('#btn-send').attr("disabled", false);
-    } else {
+    } else if (msg.lock == false) {
         if (window.send_time != null) {
             var recv_time = new Date();
             var sec = (recv_time.getTime() - window.send_time.getTime()) / 1000.0;
@@ -124,18 +125,27 @@ function yunba_msg_cb(data) {
         $('#btn-send').attr("disabled", true);
     }
 
-    status += ' | 电量: ' + msg.battery + '%';
-    status += ' | 充电: ' + (msg.charge ? '是' : '否');
+    if (msg.battery != undefined) {
+        battery = msg.battery;
+    }
+    if (msg.charge != undefined) {
+        charge = msg.charge;
+    }
+    status += ' | 电量: ' + battery + '%';
+    status += ' | 充电: ' + (charge ? '是' : '否');
     $('#span-status').text(status);
 
-    var gps = msg.gps.split(',');
-    console.log(gps);
-    if (gps[6] == 0) {
-        $('#span-gps').text('位置: 不可定位 | 可见卫星数: ' + gps[7]);
+    if (msg.gps != undefined) {
+        gps = msg.gps
+    }
+    var gps_array = gps.split(',');
+    console.log(gps_array);
+    if (gps_array[6] == 0) {
+        $('#span-gps').text('位置: 不可定位 | 可见卫星数: ' + gps_array[7]);
     } else {
-        $('#span-gps').text('位置: [' + gps[2] + 'N, ' + gps[4] + 'E]');
+        $('#span-gps').text('位置: [' + gps_array[2] + 'N, ' + gps_array[4] + 'E]');
 
-        var pos = new qq.maps.LatLng(gps[2] / 100.0, gps[4] / 100.0);
+        var pos = { lat: gps_array[2] / 100.0, lng: gps_array[4] / 100.0 };
         map.panTo(pos);
         marker.setPosition(pos);
     }
@@ -144,7 +154,7 @@ function yunba_msg_cb(data) {
         $('#span-loading').css("display", "none");
         $('#btn-buzzer').attr("disabled", false);
         $('#btn-gps').css("display", "block");
-        resetMap();
+        reset_map();
         window.first_msg = false;
     }
 }
