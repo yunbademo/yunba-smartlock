@@ -7,10 +7,6 @@ function reset_map() {
     console.log('map height: ' + mapHeight);
     $('#div-map').height(mapHeight);
 
-
-    // 22.175985300000004,
-    //  "lng": 113.5527563
-
     var pos = { lat: 22.175985300000004, lng: 113.5527563 };
     map = new google.maps.Map(document.getElementById('div-map'), {
         zoom: 13,
