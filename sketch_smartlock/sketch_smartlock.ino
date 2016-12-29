@@ -1,9 +1,10 @@
 #include <ArduinoJson.h>
+#include <vmcell.h>
 #include <LGPRS.h>
 #include <LGPRSClient.h>
 #include <LBattery.h>
 #include <LGPS.h>
-#define MQTT_BUFFER_SIZE 256
+#include <LTask.h>
 #include <MQTTClient.h>
 
 #define JSON_BUF_SIZE 256
@@ -47,7 +48,8 @@ static char g_password[32];
 static LGPRSClient g_net_client;
 static MQTTClient g_mqtt_client;
 
-static bool g_need_report = true;
+static bool g_report_lock = true;
+static bool g_report_other = true;
 
 static gpsSentenceInfoStruct g_gps_info;
 static unsigned long g_last_report_ms = 0;
@@ -56,6 +58,43 @@ static uint32_t g_buzzer_duration = 0;
 static bool g_buzzer_on = false;
 
 static unsigned long g_check_net_ms = 0;
+
+/*
+  Wrapper to the low-level function vm_cell_open()
+  Initialize the Cell register on LinkIt ONE
+*/
+static boolean cell_open(void *userData) {
+  *(VMINT *)userData = vm_cell_open();
+  return TRUE;
+}
+
+
+/*
+  Wrapper to the low-level function vm_cell_get_cur_cell_info()
+  Get the current cell info. Result is stored into a struct
+*/
+static boolean get_current_cell_info(void *userData) {
+  *(vm_cell_info_struct **)userData = vm_cell_get_cur_cell_info();
+  return TRUE;
+}
+
+/*
+  Wrapper to the low-level function vm_cell_get_nbr_num()
+  Get the number of neighbor cells
+*/
+static boolean get_neighbor_cell_number(void *userData) {
+  *(VMINT **)userData = vm_cell_get_nbr_num();
+  return TRUE;
+}
+
+/*
+  Wrapper to the low-level function vm_cell_get_nbr_cell_info()
+  Get the neighbor cells info. Result is stored into a struct array
+*/
+static boolean get_neighbor_cell_info(void *userData) {
+  *(vm_cell_info_struct***) userData = vm_cell_get_nbr_cell_info();
+  return TRUE;
+}
 
 static inline void start_motor() {
   digitalWrite(PIN_MOTOR, LOW);
@@ -233,6 +272,14 @@ static void set_alias(const char *alias) {
 }
 
 static void init_gprs() {
+  Serial.println("vm_cell_open");
+  VMINT rc;
+  do {
+    LTask.remoteCall(&cell_open, (void *)&rc);
+    Serial.println(".");
+    delay(1000);
+  } while (rc != VM_CELL_OPEN_SUCCESS && rc != VM_CELL_OPEN_ALREADY_OPEN);
+
   Serial.println("attaching gprs");
   while (!LGPRS.attachGPRS(g_gprs_apn, g_gprs_username, g_gprs_password)) {
     Serial.println(".");
@@ -276,34 +323,47 @@ static void init_yunba() {
 static void check_need_report() {
   if (millis() - g_last_report_ms > 240000) {
     g_last_report_ms = millis();
-    g_need_report = true;
+    g_report_other = true;
   }
 }
 
 static void handle_report() {
-  if (!g_need_report) {
+  if (!g_report_lock && !g_report_other) {
     return;
   }
 
   StaticJsonBuffer<JSON_BUF_SIZE> json_buf;
   JsonObject& root = json_buf.createObject();
 
-  root["lock"] = (g_lock_status == LOCK_LOCKED);
+  if (g_report_lock) {
+    root["lock"] = (g_lock_status == LOCK_LOCKED);
+    g_report_lock = false;
+  }
 
-  LGPS.getData(&g_gps_info);
-  String gps = String((char *)g_gps_info.GPGGA);
-  gps.trim();
-  root["gps"] = gps;
+  if (g_report_other) {
+    LGPS.getData(&g_gps_info);
+    String gps = String((char *)g_gps_info.GPGGA);
+    gps.trim();
+    root["gps"] = gps;
+    root["battery"] = LBattery.level();
+    root["charge"] = (LBattery.isCharging() == true);
 
-  root["battery"] = LBattery.level();
-  root["charge"] = (LBattery.isCharging() == true);
+    vm_cell_info_struct *current_cell_ptr = NULL;
+    LTask.remoteCall(&get_current_cell_info, (void *)&current_cell_ptr);
+    JsonObject& cell = root.createNestedObject("cell");
+    cell["mcc"] = current_cell_ptr->mcc;
+    cell["mnc"] = current_cell_ptr->mnc;
+    cell["lac"] = current_cell_ptr->lac;
+    cell["ci"] = current_cell_ptr->ci;
+    g_report_other = false;
+  }
 
   String json;
   root.printTo(json);
 
   Serial.println("publish: " + json);
   g_mqtt_client.publish(g_report_topic, json);
-  g_need_report = false;
+  g_report_lock = false;
 }
 
 static void unlock() {
@@ -330,7 +390,8 @@ static void handle_msg(String &msg) {
   if (cmd == "unlock") {
     unlock();
   } else if (cmd == "report") {
-    g_need_report = true;
+    g_report_lock = true;
+    g_report_other = true;
   } else if (cmd == "buzzer") {
     buzzer(1000);
   }
@@ -346,7 +407,7 @@ static void handle_lock() {
       } else {
         if (g_lock_unlock_step == 1) {
           stop_motor();
-          g_need_report = true;
+          g_report_lock = true;
           g_lock_status = LOCK_UNLOCKED;
           buzzer(200);
           g_unlocked_ms = millis();
@@ -362,7 +423,7 @@ static void handle_lock() {
       } else {
         if (g_lock_unlock_step == 1) {
           stop_motor();
-          g_need_report = true;
+          g_report_lock = true;
           g_lock_status = LOCK_LOCKED;
           buzzer(400);
           Serial.println("locked");
@@ -386,7 +447,7 @@ static void handle_lock() {
 }
 
 static void check_network() {
-  if (millis() - g_check_net_ms > 20000) {
+  if (millis() - g_check_net_ms > 30000) {
     if (!g_mqtt_client.connected()) {
       Serial.println("mqtt connection failed, try reconnect");
       LGPS.powerOff();
