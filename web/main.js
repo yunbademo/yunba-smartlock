@@ -45,6 +45,14 @@ $(window).resize(function() {
     reset_map();
 });
 
+$(window).bind("beforeunload", function() {
+    yunba.unsubscribe({ 'topic': TOPIC_REPORT }, function(success, msg) {
+        if (!success) {
+            console.log(msg);
+        }
+    });
+})
+
 $(document).ready(function() {
     window.send_time = null;
     window.first_msg = true;
