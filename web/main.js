@@ -4,7 +4,7 @@ var ALIAS = 'lock_102030002';
 
 function reset_map() {
     var mapHeight = $(window).height() - $('#div-map').offset().top - 48;
-    console.log('map height: ' + mapHeight);
+    // console.log('map height: ' + mapHeight);
     $('#div-map').height(mapHeight);
 
     var pos = { lat: 22.5382099, lng: 113.9577271 };
@@ -97,6 +97,22 @@ $('#btn-buzzer').click(function() {
     });
 });
 
+function cell_locate(cell) {
+	console.log('cell_locate');
+    var settings = {
+        "async": true,
+        "crossDomain": false,
+        "url": "https://ap1.unwiredlabs.com/v2/process.php",
+        "method": "POST",
+        "headers": {},
+        "processData": false,
+        "data": "{\"token\": \"99e531f899f636\",\"radio\": \"gsm\",\"mcc\": 460,\"mnc\": 1,\"cells\": [{\"lac\": 9536,\"cid\": 31269}],\"address\": 1}"
+    }
+
+    $.ajax(settings).done(function(response) {
+        console.log(response);
+    });
+}
 
 function yunba_msg_cb(data) {
     console.log(data);
@@ -135,11 +151,12 @@ function yunba_msg_cb(data) {
         gps = msg.gps
     }
     var gps_array = gps.split(',');
-    console.log(gps_array);
+    // console.log(gps_array);
     if (gps_array[6] == 0) {
-        $('#span-gps').text('位置: 不可定位 | 可见卫星数: ' + gps_array[7]);
+        $('#span-gps').text('位置(基站): 正在定位...');
+        cell_locate(msg.cell);
     } else {
-        $('#span-gps').text('位置: [' + gps_array[2] + 'N, ' + gps_array[4] + 'E]');
+        $('#span-gps').text('位置(GPS): [' + gps_array[2] + 'N, ' + gps_array[4] + 'E]');
 
         var pos = { lat: gps_array[2] / 100.0, lng: gps_array[4] / 100.0 };
         map.panTo(pos);
