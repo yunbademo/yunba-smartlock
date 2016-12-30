@@ -404,8 +404,10 @@ static void handle_msg(String &msg) {
 
   String cmd = root["cmd"];
   if (cmd == "unlock") {
+    buzzer(100);
     unlock();
   } else if (cmd == "report") {
+    buzzer(100);
     g_report_lock = true;
     g_report_other = true;
   } else if (cmd == "buzzer") {
