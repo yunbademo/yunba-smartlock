@@ -17,7 +17,7 @@ function reset_map() {
     });
 
     info_window = new google.maps.InfoWindow();
-    if (window.map_info != undefined) {
+    if (typeof(map_info) != 'undefined') {
         info_window.setContent(map_info);
         info_window.open(map, marker);
     }
@@ -143,48 +143,58 @@ function yunba_msg_cb(data) {
     }
 
     var msg = JSON.parse(data.msg);
-    if (msg.lock != undefined) {
+    if (typeof(msg.lock) != 'undefined') {
         lock = msg.lock;
     }
     var status = ""
-    if (lock == true) {
-        status = '已锁上';
-        $('#btn-send').attr("disabled", false);
-    } else if (lock == false) {
-        if (window.send_time != null) {
-            var recv_time = new Date();
-            var sec = (recv_time.getTime() - window.send_time.getTime()) / 1000.0;
-            status = '已打开(' + sec + ' 秒)';
-            window.send_time = null;
-        } else {
-            status = '已打开';
+    if (typeof(lock) != 'undefined') {
+        if (lock == true) {
+            status = '已锁上';
+            $('#btn-send').attr("disabled", false);
+        } else if (lock == false) {
+            if (window.send_time != null) {
+                var recv_time = new Date();
+                var sec = (recv_time.getTime() - window.send_time.getTime()) / 1000.0;
+                status = '已打开(' + sec + ' 秒)';
+                window.send_time = null;
+            } else {
+                status = '已打开';
+            }
+            $('#btn-send').attr("disabled", true);
         }
-        $('#btn-send').attr("disabled", true);
     }
 
-    if (msg.battery != undefined) {
+    if (typeof(msg.battery) != 'undefined') {
         battery = msg.battery;
     }
-    if (msg.charge != undefined) {
+    if (typeof(msg.charge) != 'undefined') {
         charge = msg.charge;
     }
-    status += ' | 电量: ' + battery + '%';
-    status += ' | 充电: ' + (charge ? '是' : '否');
+
+    if (typeof(battery) != 'undefined') {
+        status += ' | 电量: ' + battery + '%';
+    }
+    if (typeof(charge) != 'undefined') {
+        status += ' | 充电: ' + (charge ? '是' : '否');
+    }
     $('#span-status').text(status);
 
-    if (msg.gps != undefined) {
+    if (typeof(msg.gps) != 'undefined') {
         gps = msg.gps
     }
-    var gps_array = gps.split(',');
-    // console.log(gps_array);
-    if (gps_array[6] == 0) {
-        if (msg.cell != undefined) {
-            $('#span-gps').text('位置(基站): 正在定位...');
-            cell_locate(msg.cell);
+
+    if (typeof(gps) != 'undefined') {
+        var gps_array = gps.split(',');
+        // console.log(gps_array);
+        if (gps_array[6] == 0) {
+            if (typeof(msg.cell) != 'undefined') {
+                $('#span-gps').text('位置(基站): 正在定位...');
+                cell_locate(msg.cell);
+            }
+        } else {
+            $('#span-gps').text('位置(GPS): [' + gps_array[2] + ', ' + gps_array[4] + ']');
+            change_map(gps_array[2] / 100.0, gps_array[4] / 100.0);
         }
-    } else {
-        $('#span-gps').text('位置(GPS): [' + gps_array[2] + ', ' + gps_array[4] + ']');
-        change_map(gps_array[2] / 100.0, gps_array[4] / 100.0);
     }
 
     if (window.first_msg == true) {
