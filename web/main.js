@@ -175,8 +175,10 @@ function yunba_msg_cb(data) {
     var gps_array = gps.split(',');
     // console.log(gps_array);
     if (gps_array[6] == 0) {
-        $('#span-gps').text('位置(基站): 正在定位...');
-        cell_locate(msg.cell);
+        if (msg.cell != undefined) {
+            $('#span-gps').text('位置(基站): 正在定位...');
+            cell_locate(msg.cell);
+        }
     } else {
         $('#span-gps').text('位置(GPS): [' + gps_array[2] + ', ' + gps_array[4] + ']');
         change_map(gps_array[2] / 100.0, gps_array[4] / 100.0);
