@@ -3,9 +3,9 @@ var TOPIC_REPORT = 'lock_report';
 var ALIAS = 'lock_102030002';
 
 function reset_map() {
-    var mapHeight = $(window).height() - $('#div-map').offset().top - 48;
-    // console.log('map height: ' + mapHeight);
-    $('#div-map').height(mapHeight);
+    var map_height = $(window).height() - $('#div-map').offset().top - 48;
+    // console.log('map height: ' + map_height);
+    $('#div-map').height(map_height);
 
     map = new google.maps.Map(document.getElementById('div-map'), {
         zoom: 13,
@@ -14,6 +14,37 @@ function reset_map() {
     marker = new google.maps.Marker({
         position: center,
         map: map
+    });
+
+    info_window = new google.maps.InfoWindow({
+        content: ''
+    });
+    if (window.map_info != undefined) {
+    	info_window.setContent(map_info);
+        info_window.open(map, marker);
+    }
+}
+
+function change_map(lat, lon) {
+    center = { lat: lat, lng: lon };
+    map.panTo(center);
+    marker.setPosition(center);
+
+    info_window.close();
+    var geocoder = new google.maps.Geocoder;
+    geocoder.geocode({ 'location': center }, function(results, status) {
+        if (status === 'OK') {
+            if (results[1]) {
+                map_info = results[1].formatted_address;
+                info_window.setContent(map_info);
+                info_window.open(map, marker);
+
+            } else {
+                console.log('no results found');
+            }
+        } else {
+            console.log('geocoder failed due to: ' + status);
+        }
     });
 }
 
@@ -97,20 +128,15 @@ $('#btn-buzzer').click(function() {
     });
 });
 
-function change_map(lat, lon) {
-    center = { lat: lat, lng: lon };
-    map.panTo(center);
-    marker.setPosition(center);
-}
-
-function cell_locate(cell) {
-	var request = '/cellocation/cell/?mcc=' + cell.mcc + '&mnc=' + cell.mnc + '&lac=' + cell.lac + '&ci=' + cell.ci + '&output=json';
-	// console.log(request);
+function cell_locate(cells) {
+    var cell = cells[0];
+    var request = '/cellocation/cell/?mcc=' + cell.mcc + '&mnc=' + cell.mnc + '&lac=' + cell.lac + '&ci=' + cell.ci + '&output=json';
+    // console.log(request);
     $.ajax(request).done(function(response) {
         console.log(response);
         if (response.errcode == 0) {
             $('#span-gps').text('位置(基站): [' + response.lat + ', ' + response.lon + ']');
-            change_map(parseFloat(response.lat), parseFloat(response.lon, response.address));
+            change_map(parseFloat(response.lat), parseFloat(response.lon));
         } else {
             $('#span-gps').text('位置(基站): 定位失败');
         }
@@ -160,7 +186,7 @@ function yunba_msg_cb(data) {
         cell_locate(msg.cell);
     } else {
         $('#span-gps').text('位置(GPS): [' + gps_array[2] + ', ' + gps_array[4] + ']');
-        change_map(gps_array[2] / 100.0, gps_array[4] / 100.0, null);
+        change_map(gps_array[2] / 100.0, gps_array[4] / 100.0);
     }
 
     if (window.first_msg == true) {
