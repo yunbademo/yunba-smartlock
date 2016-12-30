@@ -7,13 +7,12 @@ function reset_map() {
     // console.log('map height: ' + mapHeight);
     $('#div-map').height(mapHeight);
 
-    var pos = { lat: 22.5382099, lng: 113.9577271 };
     map = new google.maps.Map(document.getElementById('div-map'), {
         zoom: 13,
-        center: pos
+        center: center
     });
     marker = new google.maps.Marker({
-        position: pos,
+        position: center,
         map: map
     });
 }
@@ -27,6 +26,7 @@ $(document).ready(function() {
     window.first_msg = true;
 
     $('#span-status').text('正在连接云巴服务器...');
+    center = { lat: 22.542955, lng: 114.059688 };
 
     window.yunba = new Yunba({
         server: 'sock.yunba.io',
@@ -97,20 +97,23 @@ $('#btn-buzzer').click(function() {
     });
 });
 
-function cell_locate(cell) {
-	console.log('cell_locate');
-    var settings = {
-        "async": true,
-        "crossDomain": false,
-        "url": "https://ap1.unwiredlabs.com/v2/process.php",
-        "method": "POST",
-        "headers": {},
-        "processData": false,
-        "data": "{\"token\": \"99e531f899f636\",\"radio\": \"gsm\",\"mcc\": 460,\"mnc\": 1,\"cells\": [{\"lac\": 9536,\"cid\": 31269}],\"address\": 1}"
-    }
+function change_map(lat, lon) {
+    center = { lat: lat, lng: lon };
+    map.panTo(center);
+    marker.setPosition(center);
+}
 
-    $.ajax(settings).done(function(response) {
+function cell_locate(cell) {
+	var request = '/cellocation/cell/?mcc=' + cell.mcc + '&mnc=' + cell.mnc + '&lac=' + cell.lac + '&ci=' + cell.ci + '&output=json';
+	// console.log(request);
+    $.ajax(request).done(function(response) {
         console.log(response);
+        if (response.errcode == 0) {
+            $('#span-gps').text('位置(基站): [' + response.lat + ', ' + response.lon + ']');
+            change_map(parseFloat(response.lat), parseFloat(response.lon, response.address));
+        } else {
+            $('#span-gps').text('位置(基站): 定位失败');
+        }
     });
 }
 
@@ -156,11 +159,8 @@ function yunba_msg_cb(data) {
         $('#span-gps').text('位置(基站): 正在定位...');
         cell_locate(msg.cell);
     } else {
-        $('#span-gps').text('位置(GPS): [' + gps_array[2] + 'N, ' + gps_array[4] + 'E]');
-
-        var pos = { lat: gps_array[2] / 100.0, lng: gps_array[4] / 100.0 };
-        map.panTo(pos);
-        marker.setPosition(pos);
+        $('#span-gps').text('位置(GPS): [' + gps_array[2] + ', ' + gps_array[4] + ']');
+        change_map(gps_array[2] / 100.0, gps_array[4] / 100.0, null);
     }
 
     if (window.first_msg == true) {
