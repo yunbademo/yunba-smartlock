@@ -39,7 +39,7 @@ static const char *g_gprs_password = "";
 
 static const char *g_appkey = "56a0a88c4407a3cd028ac2fe";
 static const char *g_alias = "lock_102030002";
-static const char *g_report_topic = "lock_report";
+static const char *g_report_topic = "topic_report";
 
 static char g_client_id[64];
 static char g_username[32];

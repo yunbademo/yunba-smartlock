@@ -1,5 +1,5 @@
 var APPKEY = '56a0a88c4407a3cd028ac2fe';
-var TOPIC_REPORT = 'lock_report';
+var TOPIC_REPORT = 'topic_report';
 var ALIAS = 'lock_102030002';
 
 function reset_map() {
