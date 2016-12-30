@@ -143,11 +143,14 @@ function yunba_msg_cb(data) {
     }
 
     var msg = JSON.parse(data.msg);
+    if (msg.lock != undefined) {
+        lock = msg.lock;
+    }
     var status = ""
-    if (msg.lock == true) {
+    if (lock == true) {
         status = '已锁上';
         $('#btn-send').attr("disabled", false);
-    } else if (msg.lock == false) {
+    } else if (lock == false) {
         if (window.send_time != null) {
             var recv_time = new Date();
             var sec = (recv_time.getTime() - window.send_time.getTime()) / 1000.0;
