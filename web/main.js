@@ -16,29 +16,22 @@ function reset_map() {
         map: map
     });
 
-    info_window = new google.maps.InfoWindow({
-        content: ''
-    });
+    info_window = new google.maps.InfoWindow();
     if (window.map_info != undefined) {
-    	info_window.setContent(map_info);
+        info_window.setContent(map_info);
         info_window.open(map, marker);
     }
 }
 
 function change_map(lat, lon) {
     center = { lat: lat, lng: lon };
-    map.panTo(center);
-    marker.setPosition(center);
 
-    info_window.close();
     var geocoder = new google.maps.Geocoder;
     geocoder.geocode({ 'location': center }, function(results, status) {
         if (status === 'OK') {
             if (results[1]) {
                 map_info = results[1].formatted_address;
-                info_window.setContent(map_info);
-                info_window.open(map, marker);
-
+                reset_map();
             } else {
                 console.log('no results found');
             }
