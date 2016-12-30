@@ -7,7 +7,7 @@
 #include <LTask.h>
 #include <MQTTClient.h>
 
-#define JSON_BUF_SIZE 256
+#define JSON_BUF_SIZE 1024
 
 #define PIN_MOTOR 0
 #define PIN_LOCK_STATUS 5
@@ -67,7 +67,6 @@ static boolean cell_open(void *userData) {
   *(VMINT *)userData = vm_cell_open();
   return TRUE;
 }
-
 
 /*
   Wrapper to the low-level function vm_cell_get_cur_cell_info()
@@ -327,6 +326,15 @@ static void check_need_report() {
   }
 }
 
+static void add_cell_info(JsonArray& json_array, vm_cell_info_struct *info) {
+  JsonObject& cell = json_array.createNestedObject();
+  cell["mcc"] = info->mcc;
+  cell["mnc"] = info->mnc;
+  cell["lac"] = info->lac;
+  cell["ci"] = info->ci;
+  cell["sig"] = info->rxlev;
+}
+
 static void handle_report() {
   if (!g_report_lock && !g_report_other) {
     return;
@@ -348,13 +356,21 @@ static void handle_report() {
     root["battery"] = LBattery.level();
     root["charge"] = (LBattery.isCharging() == true);
 
-    vm_cell_info_struct *current_cell_ptr = NULL;
+    VMINT *neighbor_cell_number;
+    vm_cell_info_struct *current_cell_ptr;
+    vm_cell_info_struct **neighbor_cell_ptr;
     LTask.remoteCall(&get_current_cell_info, (void *)&current_cell_ptr);
-    JsonObject& cell = root.createNestedObject("cell");
-    cell["mcc"] = current_cell_ptr->mcc;
-    cell["mnc"] = current_cell_ptr->mnc;
-    cell["lac"] = current_cell_ptr->lac;
-    cell["ci"] = current_cell_ptr->ci;
+    LTask.remoteCall(&get_neighbor_cell_number, (void *)&neighbor_cell_number);
+    LTask.remoteCall(&get_neighbor_cell_info, (void *)&neighbor_cell_ptr);
+
+    JsonArray& json_array = root.createNestedArray("cell");
+    add_cell_info(json_array, current_cell_ptr);
+    if (neighbor_cell_number && *neighbor_cell_number > 0) {
+      for (int i = 0; i < *neighbor_cell_number && i < 4; i++) {
+        add_cell_info(json_array, neighbor_cell_ptr[i]);
+      }
+    }
+
     g_report_other = false;
   }
 
