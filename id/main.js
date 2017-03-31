@@ -179,9 +179,9 @@ function yunba_msg_cb(data) {
 
     if (typeof(msg.gps) != 'undefined') {
         gps = msg.gps
+        console.log('gps: ' + gps);
     }
 
-    console.log('gps: ' + gps);
     var has_gps = false;
     if (typeof(gps) != 'undefined' && gps != '') {
         var gps_array = gps.split(',');
@@ -197,7 +197,7 @@ function yunba_msg_cb(data) {
         change_map(lat, lon);
 
     } else {
-        if (typeof(msg.cell) != 'undefined') {
+        if (typeof(msg.cell) != 'undefined' && msg.cell.length > 0) {
             $('#span-gps').text('位置(基站): 正在定位...');
             cell_locate(msg.cell);
         }
